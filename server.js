@@ -22,10 +22,11 @@ app.post("/api/calls/incoming", (req, res) => {
   }
 
   return res.send(`
-    <Response>
-      <Say>Call allowed</Say>
-    </Response>
-  `);
+  <Response>
+    <Say>Connecting your call</Say>
+    <Dial>+19018206993</Dial>
+  </Response>
+`);
 });
 
 const PORT = process.env.PORT || 3000;
