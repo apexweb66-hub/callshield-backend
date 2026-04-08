@@ -45,3 +45,9 @@ app.post("/api/calls/incoming", async (req, res) => {
     </Response>
   `);
 }
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
+});
