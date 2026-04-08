@@ -14,20 +14,22 @@ app.post("/api/calls/incoming", async (req, res) => {
 
   try {
     const response = await axios.get(
-      `http://apilayer.net/api/validate?access_key=f74827e20dae4f557a2de6b0e55caa63&number=${from}`
+      `http://apilayer.net/api/validate?access_key=f74827e20dae4f557a2de6b0e55caa63&number=${from}&carrier=1&line_type=1`
     );
 
     const data = response.data;
 
-    if (!data.valid) {
+    // 🚨 SPAM DETECTION
+    if (!data.valid || data.line_type === "voip") {
       return res.send(`
         <Response>
-          <Say>This call has been blocked.</Say>
+          <Say>This call has been blocked as spam.</Say>
           <Hangup/>
         </Response>
       `);
     }
 
+    // ✅ NORMAL CALL
     return res.send(`
       <Response>
         <Say>Connecting your call</Say>
@@ -48,7 +50,6 @@ app.post("/api/calls/incoming", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
