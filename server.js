@@ -55,7 +55,7 @@ app.post("/api/calls/incoming", async (req, res) => {
     return res.send(`
       <Response>
         <Say>Error occurred. Connecting call.</Say>
-        <Dial>+19018206993</Dial>
+        <Dial>+16623490604</Dial>
       </Response>
     `);
   }
@@ -69,7 +69,7 @@ app.post("/api/verify-human", (req, res) => {
     return res.send(`
       <Response>
         <Say>Connecting your call</Say>
-        <Dial>+19018206993</Dial>
+        <Dial>+16623490604</Dial>
       </Response>
     `);
   }
