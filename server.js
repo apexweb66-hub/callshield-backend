@@ -1,36 +1,64 @@
-exports.handler = async function(context, event, callback) {
-    const twiml = new Twilio.twiml.VoiceResponse();
+const express = require("express");
 
-    const from = event.From || "";
+const app = express();
 
-    // 🚫 Blocked / spam patterns
-    const spamPatterns = [
-        /^000/,              // starts with 000
-        /^123456/,           // fake sequence
-        /^111/,              // repeated numbers
-        /^999/,
-        /^555/,              // often fake
-        /^(\d)\1{6,}$/       // same digit repeated (e.g. 7777777)
-    ];
+// ✅ FIXED (no body-parser needed)
+app.use(express.urlencoded({ extended: false }));
 
-    // ✅ Function to check spam
-    function isSpam(number) {
-        return spamPatterns.some(pattern => pattern.test(number));
-    }
+const FORWARD_NUMBER = "+16623490604";
 
-    // 🚨 If spam → reject call
-    if (isSpam(from)) {
-        console.log("Blocked spam call from:", from);
+// 📞 Incoming call
+app.post("/incoming", (req, res) => {
+  const from = req.body.From;
 
-        twiml.reject(); // instantly hangs up
-        return callback(null, twiml);
-    }
+  console.log("Incoming call from:", from);
 
-    // ✅ Otherwise allow call
-    console.log("Allowed call from:", from);
+  const isHighRisk =
+    !from ||
+    from.length < 10 ||
+    from.includes("0000");
 
-    twiml.say("Please wait while we connect your call.");
-    twiml.dial(context.MY_PHONE_NUMBER); // your number
+  if (isHighRisk) {
+    return res.send(`
+      <Response>
+        <Say>This call has been blocked.</Say>
+        <Hangup/>
+      </Response>
+    `);
+  }
 
-    return callback(null, twiml);
-};
+  return res.send(`
+    <Response>
+      <Gather numDigits="1" action="/verify">
+        <Say>Please press 1 to connect your call</Say>
+      </Gather>
+    </Response>
+  `);
+});
+
+// 📲 Handle key press
+app.post("/verify", (req, res) => {
+  const digit = req.body.Digits;
+
+  if (digit === "1") {
+    return res.send(`
+      <Response>
+        <Say>Connecting your call</Say>
+        <Dial>${FORWARD_NUMBER}</Dial>
+      </Response>
+    `);
+  } else {
+    return res.send(`
+      <Response>
+        <Say>Invalid input. Goodbye.</Say>
+        <Hangup/>
+      </Response>
+    `);
+  }
+});
+
+// 🚀 Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
