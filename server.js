@@ -35,8 +35,7 @@ app.all("/call", (req, res) => {
     }
     else {
         twiml.say("Please wait while we connect your call.");
-        twiml.dial(process.env.MY_PHONE_NUMBER);
-    }
+twiml.dial("+16623490604");    }
 
     res.type("text/xml");
     res.send(twiml.toString());
