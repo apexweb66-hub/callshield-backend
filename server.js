@@ -1,88 +1,36 @@
-const axios = require("axios");
-const express = require("express");
+exports.handler = async function(context, event, callback) {
+    const twiml = new Twilio.twiml.VoiceResponse();
 
-const app = express();
+    const from = event.From || "";
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+    // 🚫 Blocked / spam patterns
+    const spamPatterns = [
+        /^000/,              // starts with 000
+        /^123456/,           // fake sequence
+        /^111/,              // repeated numbers
+        /^999/,
+        /^555/,              // often fake
+        /^(\d)\1{6,}$/       // same digit repeated (e.g. 7777777)
+    ];
 
-app.get("/", (req, res) => {
-  res.send("CallShield backend is LIVE 🚀");
-});
-
-// 📞 Incoming call handler
-app.post("/api/calls/incoming", async (req, res) => {
-  const from = req.body.From || "Unknown";
-
-  try {
-    const response = await axios.get(
-      `http://apilayer.net/api/validate?access_key=df1550471b494f9bdd0a24debc23b549&number=${from}&carrier=1&line_type=1`
-    );
-
-    const data = response.data;
-
-    console.log("Incoming number:", from);
-    console.log("Line type:", data.line_type);
-    console.log("Carrier:", data.carrier);
-
-    // 🚨 STRONG SPAM FILTER
-    if (
-      !data.valid ||
-      data.line_type === "voip" ||
-      data.line_type === "fixed_line_or_voip" ||
-      !data.carrier ||
-      data.carrier === "Unknown"
-    ) {
-      return res.send(`
-        <Response>
-          <Say>This call has been blocked as spam.</Say>
-          <Hangup/>
-        </Response>
-      `);
+    // ✅ Function to check spam
+    function isSpam(number) {
+        return spamPatterns.some(pattern => pattern.test(number));
     }
 
-    // 🔐 HUMAN CHECK (PRESS 1)
-    return res.send(`
-      <Response>
-        <Say>Please press 1 to connect your call.</Say>
-        <Gather numDigits="1" action="/api/verify-human" method="POST"/>
-      </Response>
-    `);
+    // 🚨 If spam → reject call
+    if (isSpam(from)) {
+        console.log("Blocked spam call from:", from);
 
-  } catch (err) {
-    console.error("API Error:", err);
+        twiml.reject(); // instantly hangs up
+        return callback(null, twiml);
+    }
 
-    return res.send(`
-      <Response>
-        <Say>Error occurred. Connecting call.</Say>
-        <Dial>+16623490604</Dial>
-      </Response>
-    `);
-  }
-});
+    // ✅ Otherwise allow call
+    console.log("Allowed call from:", from);
 
-// 🔢 Verify human input
-app.post("/api/verify-human", (req, res) => {
-  const digit = req.body.Digits;
+    twiml.say("Please wait while we connect your call.");
+    twiml.dial(context.MY_PHONE_NUMBER); // your number
 
-  if (digit === "1") {
-    return res.send(`
-      <Response>
-        <Say>Connecting your call</Say>
-        <Dial>+16623490604</Dial>
-      </Response>
-    `);
-  }
-
-  return res.send(`
-    <Response>
-      <Say>Invalid input. Goodbye.</Say>
-      <Hangup/>
-    </Response>
-  `);
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
-});
+    return callback(null, twiml);
+};
