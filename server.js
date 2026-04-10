@@ -1,64 +1,53 @@
 const express = require("express");
-
 const app = express();
+const twilio = require("twilio");
 
-// ✅ FIXED (no body-parser needed)
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 
-const FORWARD_NUMBER = "+16623490604";
+app.all("/call", (req, res) => {
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
 
-// 📞 Incoming call
-app.post("/incoming", (req, res) => {
-  const from = req.body.From;
+    let from = (req.body?.From || req.query?.From || "").replace("+", "").trim();
 
-  console.log("Incoming call from:", from);
+    console.log("Incoming call from:", from);
 
-  const isHighRisk =
-    !from ||
-    from.length < 10 ||
-    from.includes("0000");
+    const spamPatterns = [
+        /^000/,
+        /^123456/,
+        /^111/,
+        /^999/,
+        /^555/,
+        /^(\d)\1{6,}$/
+    ];
 
-  if (isHighRisk) {
-    return res.send(`
-      <Response>
-        <Say>This call has been blocked.</Say>
-        <Hangup/>
-      </Response>
-    `);
-  }
+    function isSpam(number) {
+        return spamPatterns.some(pattern => pattern.test(number));
+    }
 
-  return res.send(`
-    <Response>
-      <Gather numDigits="1" action="/verify">
-        <Say>Please press 1 to connect your call</Say>
-      </Gather>
-    </Response>
-  `);
+    if (!from || from.length < 10) {
+        twiml.say("Invalid caller.");
+        twiml.reject();
+    }
+    else if (isSpam(from)) {
+        twiml.say("Spam call blocked.");
+        twiml.reject();
+    }
+    else {
+        twiml.say("Please wait while we connect your call.");
+        twiml.dial(process.env.MY_PHONE_NUMBER);
+    }
+
+    res.type("text/xml");
+    res.send(twiml.toString());
 });
 
-// 📲 Handle key press
-app.post("/verify", (req, res) => {
-  const digit = req.body.Digits;
-
-  if (digit === "1") {
-    return res.send(`
-      <Response>
-        <Say>Connecting your call</Say>
-        <Dial>${FORWARD_NUMBER}</Dial>
-      </Response>
-    `);
-  } else {
-    return res.send(`
-      <Response>
-        <Say>Invalid input. Goodbye.</Say>
-        <Hangup/>
-      </Response>
-    `);
-  }
+// health check
+app.get("/", (req, res) => {
+    res.send("CallShield backend is running ✅");
 });
 
-// 🚀 Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+    console.log("Server running on port", PORT);
 });
