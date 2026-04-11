@@ -4,6 +4,7 @@ const twilio = require("twilio");
 
 app.use(express.urlencoded({ extended: true }));
 
+// 🔹 STEP 1: Incoming call
 app.all("/call", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -12,6 +13,7 @@ app.all("/call", (req, res) => {
 
     console.log("Incoming call from:", from);
 
+    // 🚫 Basic spam patterns
     const spamPatterns = [
         /^000/,
         /^123456/,
@@ -25,27 +27,58 @@ app.all("/call", (req, res) => {
         return spamPatterns.some(pattern => pattern.test(number));
     }
 
-    if (!from || from.length < 10) {
-        twiml.say("Invalid caller.");
+    // ❌ Block obvious spam
+    if (!from || from.length < 10 || isSpam(from)) {
+        twiml.say("This call has been blocked.");
         twiml.reject();
-    }
-    else if (isSpam(from)) {
-        twiml.say("Spam call blocked.");
-        twiml.reject();
-    }
+    } 
     else {
-        twiml.say("Please wait while we connect your call.");
-twiml.dial("+16623490604");    }
+        // 🔊 Ask user to press 1
+        const gather = twiml.gather({
+            numDigits: 1,
+            action: "/verify",
+            method: "POST",
+            timeout: 5
+        });
+
+        gather.say("To connect your call, please press 1.");
+
+        // If no input
+        twiml.say("No input received. Goodbye.");
+        twiml.hangup();
+    }
 
     res.type("text/xml");
     res.send(twiml.toString());
 });
 
-// health check
+// 🔹 STEP 2: Handle key press
+app.post("/verify", (req, res) => {
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
+
+    const digit = req.body.Digits;
+
+    console.log("User pressed:", digit);
+
+    if (digit === "1") {
+        twiml.say("Connecting your call.");
+        twiml.dial("+16623490604"); // 👈 YOUR NUMBER HERE
+    } else {
+        twiml.say("Invalid input. Goodbye.");
+        twiml.hangup();
+    }
+
+    res.type("text/xml");
+    res.send(twiml.toString());
+});
+
+// 🔹 Health check
 app.get("/", (req, res) => {
     res.send("CallShield backend is running ✅");
 });
 
+// 🚀 Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("Server running on port", PORT);
