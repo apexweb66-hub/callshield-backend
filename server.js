@@ -88,7 +88,7 @@ app.post("/press-check", (req, res) => {
                 speechTimeout: "auto"
             });
 
-            gather.say("Please say your name after the beep.");
+            gather.say("Please say your name to connect your call.");
 
             twiml.say("No response detected. Goodbye.");
             twiml.hangup();
