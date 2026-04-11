@@ -4,10 +4,10 @@ const twilio = require("twilio");
 const path = require("path");
 
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(__dirname));
 
-// 🧠 Simple memory (tracks repeat callers)
+// 🧠 Memory
 let callHistory = {};
+let callLogs = [];
 
 // 🔹 STEP 1: Incoming call
 app.all("/call", (req, res) => {
@@ -17,6 +17,13 @@ app.all("/call", (req, res) => {
     let from = (req.body?.From || req.query?.From || "").replace("+", "").trim();
 
     console.log("Incoming call:", from);
+
+    // 📊 Save call
+    callLogs.unshift({
+        number: from,
+        time: new Date().toLocaleTimeString(),
+        status: "Checking"
+    });
 
     // Track repeat calls
     callHistory[from] = (callHistory[from] || 0) + 1;
@@ -43,13 +50,14 @@ app.all("/call", (req, res) => {
 
     console.log("Spam score:", score);
 
-    // 🚫 High-risk → block
+    // 🚫 Block spam
     if (score >= 70) {
+        callLogs[0].status = "Spam Blocked";
+
         twiml.say("This call has been blocked.");
         twiml.hangup();
     } 
     else {
-        // ⌨️ Press 1 check
         const gather = twiml.gather({
             numDigits: 1,
             action: "/press-check",
@@ -67,7 +75,7 @@ app.all("/call", (req, res) => {
     res.send(twiml.toString());
 });
 
-// 🔹 STEP 2: Press check
+// 🔹 STEP 2: Press 1 check
 app.post("/press-check", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -81,7 +89,6 @@ app.post("/press-check", (req, res) => {
 
     if (digit === "1") {
         if (suspicious) {
-            // 🎙️ Voice check for suspicious calls
             const gather = twiml.gather({
                 input: "speech",
                 action: "/voice-check",
@@ -95,11 +102,14 @@ app.post("/press-check", (req, res) => {
             twiml.say("No response detected. Goodbye.");
             twiml.hangup();
         } else {
-            // ✅ Normal call → connect
+            callLogs[0].status = "Allowed";
+
             twiml.say("Connecting your call.");
-            twiml.dial("+16623490604"); // 👈 YOUR NUMBER
+            twiml.dial("+16623490604"); // 👈 your number
         }
     } else {
+        callLogs[0].status = "Failed Verification";
+
         twiml.say("Invalid input. Goodbye.");
         twiml.hangup();
     }
@@ -108,7 +118,7 @@ app.post("/press-check", (req, res) => {
     res.send(twiml.toString());
 });
 
-// 🔹 STEP 3: Voice check
+// 🔹 STEP 3: Voice AI check
 app.post("/voice-check", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -126,20 +136,24 @@ app.post("/voice-check", (req, res) => {
     if (confidence < 0.3) score += 30;
 
     if (score >= 70) {
+        callLogs[0].status = "Spam Blocked";
+
         twiml.say("We could not verify your response. Goodbye.");
         twiml.hangup();
     } else {
+        callLogs[0].status = "Allowed";
+
         twiml.say("Thank you. Connecting your call.");
-        twiml.dial("+16623490604"); // 👈 YOUR NUMBER
+        twiml.dial("+16623490604"); // 👈 your number
     }
 
     res.type("text/xml");
     res.send(twiml.toString());
 });
 
-// 🔹 Health check (fallback)
-app.get("/health", (req, res) => {
-    res.send("CallShield running 🚀");
+// 🌐 API for dashboard
+app.get("/api/calls", (req, res) => {
+    res.json(callLogs.slice(0, 20));
 });
 
 // 🚀 Start server
