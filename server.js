@@ -1,15 +1,16 @@
 const express = require("express");
+const cors = require("cors");
 const app = express();
 const twilio = require("twilio");
-const path = require("path");
 
+app.use(cors()); // ✅ FIXES YOUR DASHBOARD ISSUE
 app.use(express.urlencoded({ extended: true }));
 
-// 🧠 Memory
+// 🧠 Memory storage
 let callHistory = {};
 let callLogs = [];
 
-// 🔹 STEP 1: Incoming call
+// 🔹 Incoming call
 app.all("/call", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -18,7 +19,7 @@ app.all("/call", (req, res) => {
 
     console.log("Incoming call:", from);
 
-    // 📊 Save call
+    // Save call
     callLogs.unshift({
         number: from,
         time: new Date().toLocaleTimeString(),
@@ -28,7 +29,7 @@ app.all("/call", (req, res) => {
     // Track repeat calls
     callHistory[from] = (callHistory[from] || 0) + 1;
 
-    // 🚫 Spam patterns
+    // Spam patterns
     const spamPatterns = [
         /^000/,
         /^123456/,
@@ -50,7 +51,6 @@ app.all("/call", (req, res) => {
 
     console.log("Spam score:", score);
 
-    // 🚫 Block spam
     if (score >= 70) {
         callLogs[0].status = "Spam Blocked";
 
@@ -75,7 +75,7 @@ app.all("/call", (req, res) => {
     res.send(twiml.toString());
 });
 
-// 🔹 STEP 2: Press 1 check
+// 🔹 Press 1 check
 app.post("/press-check", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -105,7 +105,7 @@ app.post("/press-check", (req, res) => {
             callLogs[0].status = "Allowed";
 
             twiml.say("Connecting your call.");
-            twiml.dial("+16623490604"); // 👈 your number
+            twiml.dial("+16623490604"); // 👈 YOUR NUMBER
         }
     } else {
         callLogs[0].status = "Failed Verification";
@@ -118,7 +118,7 @@ app.post("/press-check", (req, res) => {
     res.send(twiml.toString());
 });
 
-// 🔹 STEP 3: Voice AI check
+// 🔹 Voice check
 app.post("/voice-check", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
@@ -144,16 +144,21 @@ app.post("/voice-check", (req, res) => {
         callLogs[0].status = "Allowed";
 
         twiml.say("Thank you. Connecting your call.");
-        twiml.dial("+16623490604"); // 👈 your number
+        twiml.dial("+16623490604"); // 👈 YOUR NUMBER
     }
 
     res.type("text/xml");
     res.send(twiml.toString());
 });
 
-// 🌐 API for dashboard
+// 📊 API for dashboard
 app.get("/api/calls", (req, res) => {
     res.json(callLogs.slice(0, 20));
+});
+
+// 🟢 Optional homepage (so you don’t see “Cannot GET /” anymore)
+app.get("/", (req, res) => {
+    res.send("CallShield backend is running ✅");
 });
 
 // 🚀 Start server
