@@ -4,6 +4,8 @@ const twilio = require("twilio");
 
 app.use(express.urlencoded({ extended: true }));
 
+let callHistory = {};
+
 // 🔹 STEP 1: Incoming call
 app.all("/call", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -11,9 +13,12 @@ app.all("/call", (req, res) => {
 
     let from = (req.body?.From || req.query?.From || "").replace("+", "").trim();
 
-    console.log("Incoming call from:", from);
+    console.log("Incoming call:", from);
 
-    // 🚫 Basic spam patterns
+    // Track repeat callers
+    callHistory[from] = (callHistory[from] || 0) + 1;
+
+    // 🚫 Spam patterns
     const spamPatterns = [
         /^000/,
         /^123456/,
@@ -27,23 +32,30 @@ app.all("/call", (req, res) => {
         return spamPatterns.some(pattern => pattern.test(number));
     }
 
-    // ❌ Block obvious spam
-    if (!from || from.length < 10 || isSpam(from)) {
+    let score = 0;
+
+    if (!from || from.length < 10) score += 50;
+    if (isSpam(from)) score += 50;
+    if (callHistory[from] > 3) score += 30;
+
+    console.log("Spam score:", score);
+
+    // 🚫 HIGH RISK → block
+    if (score >= 70) {
         twiml.say("This call has been blocked.");
-        twiml.reject();
+        twiml.hangup();
     } 
     else {
-        // 🔊 Ask user to press 1
+        // ⌨️ Press 1 check (cheap filter)
         const gather = twiml.gather({
             numDigits: 1,
-            action: "/verify",
+            action: "/press-check",
             method: "POST",
             timeout: 5
         });
 
         gather.say("To connect your call, please press 1.");
 
-        // If no input
         twiml.say("No input received. Goodbye.");
         twiml.hangup();
     }
@@ -52,18 +64,39 @@ app.all("/call", (req, res) => {
     res.send(twiml.toString());
 });
 
-// 🔹 STEP 2: Handle key press
-app.post("/verify", (req, res) => {
+// 🔹 STEP 2: Press 1 verification
+app.post("/press-check", (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
 
     const digit = req.body.Digits;
+    let from = (req.body?.From || "").replace("+", "").trim();
 
-    console.log("User pressed:", digit);
+    console.log("Pressed:", digit);
+
+    // ⚠️ suspicious if repeat caller
+    const suspicious = (callHistory[from] || 0) > 2;
 
     if (digit === "1") {
-        twiml.say("Connecting your call.");
-        twiml.dial("+16623490604"); // 👈 YOUR NUMBER HERE
+        if (suspicious) {
+            // 🧠 Only suspicious calls go to AI check
+            const gather = twiml.gather({
+                input: "speech",
+                action: "/voice-check",
+                method: "POST",
+                timeout: 5,
+                speechTimeout: "auto"
+            });
+
+            gather.say("Please say your name after the beep.");
+
+            twiml.say("No response detected. Goodbye.");
+            twiml.hangup();
+        } else {
+            // ✅ Normal caller → connect immediately
+            twiml.say("Connecting your call.");
+            twiml.dial("+16623490604");
+        }
     } else {
         twiml.say("Invalid input. Goodbye.");
         twiml.hangup();
@@ -73,9 +106,38 @@ app.post("/verify", (req, res) => {
     res.send(twiml.toString());
 });
 
+// 🔹 STEP 3: Voice AI check
+app.post("/voice-check", (req, res) => {
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
+
+    const speech = req.body.SpeechResult || "";
+    const confidence = parseFloat(req.body.Confidence || 0);
+
+    console.log("Speech:", speech);
+    console.log("Confidence:", confidence);
+
+    let score = 0;
+
+    if (!speech) score += 70;
+    if (speech.length < 2) score += 40;
+    if (confidence < 0.3) score += 30;
+
+    if (score >= 70) {
+        twiml.say("We could not verify your response. Goodbye.");
+        twiml.hangup();
+    } else {
+        twiml.say("Thank you. Connecting your call.");
+        twiml.dial("+16623490604");
+    }
+
+    res.type("text/xml");
+    res.send(twiml.toString());
+});
+
 // 🔹 Health check
 app.get("/", (req, res) => {
-    res.send("CallShield backend is running ✅");
+    res.send("CallShield Hybrid System Running 🚀");
 });
 
 // 🚀 Start server
